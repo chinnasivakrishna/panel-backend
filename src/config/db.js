@@ -7,6 +7,13 @@ export const pool = mariadb.createPool({
   user: env.dbUser,
   password: env.dbPassword,
   database: env.dbName,
+  ...(env.dbSsl
+    ? {
+      ssl: {
+        rejectUnauthorized: env.dbSslRejectUnauthorized
+      }
+    }
+    : {}),
   connectionLimit: 10,
   connectTimeout: 5000,
   allowPublicKeyRetrieval: true,

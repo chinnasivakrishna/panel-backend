@@ -2,6 +2,15 @@ import app from "./app.js";
 import { env } from "./config/env.js";
 import { checkDbConnection } from "./config/db.js";
 
+process.on("unhandledRejection", (reason) => {
+  console.log("[startup] unhandledRejection:", reason);
+});
+
+process.on("uncaughtException", (err) => {
+  console.log("[startup] uncaughtException:", err);
+  process.exit(1);
+});
+
 function logStartupContext() {
   const dbPortRaw = process.env.DB_PORT;
   const hasDbPassword = Boolean(process.env.DB_PASSWORD && String(process.env.DB_PASSWORD).trim());
@@ -15,6 +24,8 @@ function logStartupContext() {
     dbName: env.dbName,
     dbUser: env.dbUser,
     dbPortSource: dbPortRaw ? "env" : "default(3306)",
+    dbSsl: env.dbSsl,
+    dbSslRejectUnauthorized: env.dbSslRejectUnauthorized,
     hasDbPassword,
     hasJwtSecret,
     clientOrigin: env.clientOrigin
@@ -43,7 +54,10 @@ async function start() {
     console.log("[startup] DB connected successfully.");
   } catch (e) {
     logDbError(e);
-    process.exit(1);
+    process.exitCode = 1;
+    // Give logging streams a moment to flush in PaaS logs.
+    setTimeout(() => process.exit(1), 400);
+    return;
   }
 
   app.listen(env.port, () => {
