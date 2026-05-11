@@ -15,7 +15,7 @@ router.post("/login", async (req, res) => {
   try {
     const users = await query(
       `SELECT id, org_id, full_name, email, password_hash, role
-       FROM users WHERE email = ? AND is_active = 1 LIMIT 1`,
+       FROM tb_cpanel_users WHERE email = ? AND is_active = 1 LIMIT 1`,
       [email]
     );
 

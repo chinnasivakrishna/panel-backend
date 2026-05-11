@@ -57,15 +57,15 @@ async function run() {
 
     // Minimal additive migrations for existing installs
     try {
-      await conn.query("ALTER TABLE dashboard_widgets ADD COLUMN config_json JSON NULL;");
+      await conn.query("ALTER TABLE tb_csd_dashboard_widgets ADD COLUMN config_json JSON NULL;");
     } catch {}
     try {
-      await conn.query("ALTER TABLE modules ADD COLUMN ui_config_json JSON NULL;");
+      await conn.query("ALTER TABLE tb_project_modules ADD COLUMN ui_config_json JSON NULL;");
     } catch {}
 
     try {
       await conn.query(`
-        CREATE TABLE IF NOT EXISTS org_metric_values (
+        CREATE TABLE IF NOT EXISTS tb_csd_org_metric_values (
           id BIGINT PRIMARY KEY AUTO_INCREMENT,
           org_id BIGINT NOT NULL,
           metric_key VARCHAR(80) NOT NULL,
@@ -73,9 +73,34 @@ async function run() {
           value_text VARCHAR(2048) NOT NULL DEFAULT "",
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           UNIQUE KEY uk_org_metric (org_id, metric_key),
-          CONSTRAINT fk_org_metric_org FOREIGN KEY (org_id) REFERENCES organizations(id)
+          CONSTRAINT fk_org_metric_org FOREIGN KEY (org_id) REFERENCES tb_cpanel_organizations(id)
         );
       `);
+    } catch {}
+
+    // Sidebar item visibility (roles). Null/empty => visible to all roles.
+    try {
+      await conn.query("ALTER TABLE tb_cpanel_nav_items ADD COLUMN roles_csv VARCHAR(255) NULL;");
+    } catch {}
+
+    // Support workflow enhancements: attachments + accept/decline tracking.
+    try {
+      await conn.query("ALTER TABLE tb_project_support_tickets ADD COLUMN attachments_json JSON NULL;");
+    } catch {}
+    try {
+      await conn.query("ALTER TABLE tb_project_support_tickets ADD COLUMN decision_status ENUM('pending','accepted','declined') NOT NULL DEFAULT 'pending';");
+    } catch {}
+    try {
+      await conn.query("ALTER TABLE tb_project_support_tickets ADD COLUMN decision_note TEXT NULL;");
+    } catch {}
+    try {
+      await conn.query("ALTER TABLE tb_project_support_tickets ADD COLUMN decided_by BIGINT NULL;");
+    } catch {}
+    try {
+      await conn.query("ALTER TABLE tb_project_support_tickets ADD COLUMN decided_at TIMESTAMP NULL;");
+    } catch {}
+    try {
+      await conn.query("ALTER TABLE tb_project_support_tickets ADD CONSTRAINT fk_ticket_decider FOREIGN KEY (decided_by) REFERENCES tb_cpanel_users(id);");
     } catch {}
 
     console.log("DB migration completed.");

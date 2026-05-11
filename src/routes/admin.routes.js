@@ -18,12 +18,12 @@ function toCodeFromRoute(route) {
 async function syncModulesWithNav(orgId) {
   const navRows = await query(
     `SELECT label, route, icon
-     FROM nav_items
+     FROM tb_cpanel_nav_items
      WHERE org_id = ? AND is_active = 1`,
     [orgId]
   );
   const moduleRows = await query(
-    `SELECT id, route FROM modules WHERE org_id = ?`,
+    `SELECT id, route FROM tb_project_modules WHERE org_id = ?`,
     [orgId]
   );
   const existingRoutes = new Set(moduleRows.map((m) => m.route));
@@ -37,7 +37,7 @@ async function syncModulesWithNav(orgId) {
   for (const nav of navRows) {
     if (!nav.route || ignore.has(nav.route) || existingRoutes.has(nav.route)) continue;
     await query(
-      `INSERT INTO modules (org_id, code, name, icon, route, ui_config_json, is_active)
+      `INSERT INTO tb_project_modules (org_id, code, name, icon, route, ui_config_json, is_active)
        VALUES (?, ?, ?, ?, ?, ?, 1)`,
       [
         orgId,
@@ -65,7 +65,7 @@ async function syncModulesWithNav(orgId) {
   for (const mod of moduleRows) {
     if (!mod.route || ignore.has(mod.route)) continue;
     if (!desiredRoutes.has(mod.route)) {
-      await query(`DELETE FROM modules WHERE id = ? AND org_id = ?`, [mod.id, orgId]);
+      await query(`DELETE FROM tb_project_modules WHERE id = ? AND org_id = ?`, [mod.id, orgId]);
     }
   }
 }
@@ -76,7 +76,7 @@ router.get("/modules", async (req, res) => {
     await syncModulesWithNav(req.user.orgId);
     const rows = await query(
       `SELECT id, code, name, icon, route, ui_config_json, is_active
-       FROM modules WHERE org_id = ?
+       FROM tb_project_modules WHERE org_id = ?
        ORDER BY name ASC`,
       [req.user.orgId]
     );
@@ -91,7 +91,7 @@ router.post("/modules", async (req, res) => {
   if (!code || !name || !route) return res.status(400).json({ message: "code, name, route are required" });
   try {
     await query(
-      `INSERT INTO modules (org_id, code, name, icon, route, ui_config_json, is_active)
+      `INSERT INTO tb_project_modules (org_id, code, name, icon, route, ui_config_json, is_active)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [req.user.orgId, code, name, icon || "CircleDot", route, uiConfig ? JSON.stringify(uiConfig) : null, isActive ? 1 : 0]
     );
@@ -106,7 +106,7 @@ router.patch("/modules/:id", async (req, res) => {
   const { name, icon, route, uiConfig, isActive } = req.body || {};
   try {
     await query(
-      `UPDATE modules
+      `UPDATE tb_project_modules
        SET name = COALESCE(?, name),
            icon = COALESCE(?, icon),
            route = COALESCE(?, route),
@@ -134,8 +134,8 @@ router.get("/nav-items", async (req, res) => {
   try {
     await syncModulesWithNav(req.user.orgId);
     const rows = await query(
-      `SELECT id, label, icon, route, position, sort_order, is_active
-       FROM nav_items WHERE org_id = ?
+      `SELECT id, label, icon, route, position, sort_order, is_active, roles_csv
+       FROM tb_cpanel_nav_items WHERE org_id = ?
        ORDER BY position ASC, sort_order ASC`,
       [req.user.orgId]
     );
@@ -146,13 +146,22 @@ router.get("/nav-items", async (req, res) => {
 });
 
 router.post("/nav-items", async (req, res) => {
-  const { label, icon, route, position, sortOrder, isActive } = req.body || {};
+  const { label, icon, route, position, sortOrder, isActive, rolesCsv } = req.body || {};
   if (!label || !route) return res.status(400).json({ message: "label and route are required" });
   try {
     await query(
-      `INSERT INTO nav_items (org_id, label, icon, route, position, sort_order, is_active)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [req.user.orgId, label, icon || "CircleDot", route, position || "top", Number(sortOrder || 0), isActive === false ? 0 : 1]
+      `INSERT INTO tb_cpanel_nav_items (org_id, label, icon, route, position, sort_order, is_active, roles_csv)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        req.user.orgId,
+        label,
+        icon || "CircleDot",
+        route,
+        position || "top",
+        Number(sortOrder || 0),
+        isActive === false ? 0 : 1,
+        typeof rolesCsv === "string" && rolesCsv.trim() ? rolesCsv.trim() : null
+      ]
     );
     await syncModulesWithNav(req.user.orgId);
     return res.status(201).json({ message: "Nav item created" });
@@ -163,16 +172,17 @@ router.post("/nav-items", async (req, res) => {
 
 router.patch("/nav-items/:id", async (req, res) => {
   const { id } = req.params;
-  const { label, icon, route, position, sortOrder, isActive } = req.body || {};
+  const { label, icon, route, position, sortOrder, isActive, rolesCsv } = req.body || {};
   try {
     await query(
-      `UPDATE nav_items
+      `UPDATE tb_cpanel_nav_items
        SET label = COALESCE(?, label),
            icon = COALESCE(?, icon),
            route = COALESCE(?, route),
            position = COALESCE(?, position),
            sort_order = COALESCE(?, sort_order),
-           is_active = COALESCE(?, is_active)
+           is_active = COALESCE(?, is_active),
+           roles_csv = COALESCE(?, roles_csv)
        WHERE id = ? AND org_id = ?`,
       [
         label ?? null,
@@ -181,6 +191,7 @@ router.patch("/nav-items/:id", async (req, res) => {
         position ?? null,
         typeof sortOrder === "number" ? sortOrder : null,
         typeof isActive === "boolean" ? (isActive ? 1 : 0) : null,
+        typeof rolesCsv === "string" ? (rolesCsv.trim() ? rolesCsv.trim() : null) : null,
         id,
         req.user.orgId
       ]
@@ -194,7 +205,7 @@ router.patch("/nav-items/:id", async (req, res) => {
 
 router.delete("/nav-items/:id", async (req, res) => {
   try {
-    await query(`DELETE FROM nav_items WHERE id = ? AND org_id = ?`, [req.params.id, req.user.orgId]);
+    await query(`DELETE FROM tb_cpanel_nav_items WHERE id = ? AND org_id = ?`, [req.params.id, req.user.orgId]);
     return res.json({ message: "Nav item deleted" });
   } catch {
     return res.status(500).json({ message: "Unable to delete nav item" });
@@ -204,7 +215,7 @@ router.delete("/nav-items/:id", async (req, res) => {
 router.delete("/modules/:id", async (req, res) => {
   const { id } = req.params;
   try {
-    await query(`DELETE FROM modules WHERE id = ? AND org_id = ?`, [id, req.user.orgId]);
+    await query(`DELETE FROM tb_project_modules WHERE id = ? AND org_id = ?`, [id, req.user.orgId]);
     return res.json({ message: "Module deleted" });
   } catch {
     return res.status(500).json({ message: "Unable to delete module" });
@@ -217,7 +228,7 @@ router.get("/modules/:id/fields", async (req, res) => {
   try {
     const rows = await query(
       `SELECT id, field_key, label, field_type, is_required, is_listed, sort_order, options_json
-       FROM module_fields
+       FROM tb_project_module_fields
        WHERE org_id = ? AND module_id = ?
        ORDER BY sort_order ASC`,
       [req.user.orgId, id]
@@ -234,7 +245,7 @@ router.post("/modules/:id/fields", async (req, res) => {
   if (!fieldKey || !label) return res.status(400).json({ message: "fieldKey and label are required" });
   try {
     await query(
-      `INSERT INTO module_fields
+      `INSERT INTO tb_project_module_fields
        (org_id, module_id, field_key, label, field_type, is_required, is_listed, sort_order, options_json)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
@@ -260,7 +271,7 @@ router.patch("/fields/:fieldId", async (req, res) => {
   const { label, fieldType, isRequired, isListed, sortOrder, options } = req.body || {};
   try {
     await query(
-      `UPDATE module_fields
+      `UPDATE tb_project_module_fields
        SET label = COALESCE(?, label),
            field_type = COALESCE(?, field_type),
            is_required = COALESCE(?, is_required),
@@ -288,7 +299,7 @@ router.patch("/fields/:fieldId", async (req, res) => {
 router.delete("/fields/:fieldId", async (req, res) => {
   const { fieldId } = req.params;
   try {
-    await query(`DELETE FROM module_fields WHERE id = ? AND org_id = ?`, [fieldId, req.user.orgId]);
+    await query(`DELETE FROM tb_project_module_fields WHERE id = ? AND org_id = ?`, [fieldId, req.user.orgId]);
     return res.json({ message: "Field deleted" });
   } catch {
     return res.status(500).json({ message: "Unable to delete field" });
@@ -300,7 +311,7 @@ router.get("/home-cards", async (req, res) => {
   try {
     const rows = await query(
       `SELECT id, code, title, subtitle, accent, enabled, sort_order, config_json
-       FROM home_cards WHERE org_id = ?
+       FROM tb_csd_home_cards WHERE org_id = ?
        ORDER BY sort_order ASC`,
       [req.user.orgId]
     );
@@ -315,7 +326,7 @@ router.post("/home-cards", async (req, res) => {
   if (!code || !title) return res.status(400).json({ message: "code and title are required" });
   try {
     await query(
-      `INSERT INTO home_cards (org_id, code, title, subtitle, accent, enabled, sort_order, config_json)
+      `INSERT INTO tb_csd_home_cards (org_id, code, title, subtitle, accent, enabled, sort_order, config_json)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         req.user.orgId,
@@ -339,7 +350,7 @@ router.patch("/home-cards/:id", async (req, res) => {
   const { title, subtitle, accent, enabled, sortOrder, config } = req.body || {};
   try {
     await query(
-      `UPDATE home_cards
+      `UPDATE tb_csd_home_cards
        SET title = COALESCE(?, title),
            subtitle = COALESCE(?, subtitle),
            accent = COALESCE(?, accent),
@@ -367,7 +378,7 @@ router.patch("/home-cards/:id", async (req, res) => {
 router.delete("/home-cards/:id", async (req, res) => {
   const { id } = req.params;
   try {
-    await query(`DELETE FROM home_cards WHERE id = ? AND org_id = ?`, [id, req.user.orgId]);
+    await query(`DELETE FROM tb_csd_home_cards WHERE id = ? AND org_id = ?`, [id, req.user.orgId]);
     return res.json({ message: "Home card deleted" });
   } catch {
     return res.status(500).json({ message: "Unable to delete home card" });
@@ -385,7 +396,7 @@ router.get("/metrics", async (_req, res) => {
   try {
     const rows = await query(
       `SELECT metric_key, description, value_text
-       FROM org_metric_values
+       FROM tb_csd_org_metric_values
        WHERE org_id = ?
        ORDER BY metric_key ASC`,
       [_req.user.orgId]
@@ -393,7 +404,7 @@ router.get("/metrics", async (_req, res) => {
     return res.json(rows);
   } catch (e) {
     if (metricsTableMissing(e)) {
-      console.warn("[admin/metrics] org_metric_values missing; run `npm run db:migrate`.");
+      console.warn("[admin/metrics] tb_csd_org_metric_values missing; run `npm run db:migrate`.");
       return res.json([]);
     }
     return res.status(500).json({ message: "Unable to fetch metrics" });
@@ -407,7 +418,7 @@ router.post("/metrics", async (req, res) => {
   }
   try {
     await query(
-      `INSERT INTO org_metric_values (org_id, metric_key, description, value_text)
+      `INSERT INTO tb_csd_org_metric_values (org_id, metric_key, description, value_text)
        VALUES (?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
          value_text = VALUES(value_text),
@@ -418,7 +429,7 @@ router.post("/metrics", async (req, res) => {
   } catch (e) {
     if (metricsTableMissing(e)) {
       return res.status(503).json({
-        message: "Database table org_metric_values is missing. Run: npm run db:migrate"
+        message: "Database table tb_csd_org_metric_values is missing. Run: npm run db:migrate"
       });
     }
     return res.status(500).json({ message: "Unable to save metric" });
@@ -433,14 +444,14 @@ router.patch("/metrics/:metricKey", async (req, res) => {
   }
   try {
     await query(
-      `UPDATE org_metric_values
+      `UPDATE tb_csd_org_metric_values
        SET value_text = COALESCE(?, value_text),
            description = COALESCE(?, description)
        WHERE org_id = ? AND metric_key = ?`,
       [value !== undefined ? String(value) : null, description ?? null, req.user.orgId, metricKey]
     );
     const [row] = await query(
-      `SELECT metric_key, description, value_text FROM org_metric_values WHERE org_id = ? AND metric_key = ?`,
+      `SELECT metric_key, description, value_text FROM tb_csd_org_metric_values WHERE org_id = ? AND metric_key = ?`,
       [req.user.orgId, metricKey]
     );
     if (!row) return res.status(404).json({ message: "Metric not found" });
@@ -453,7 +464,7 @@ router.patch("/metrics/:metricKey", async (req, res) => {
 router.delete("/metrics/:metricKey", async (req, res) => {
   const { metricKey } = req.params;
   try {
-    await query(`DELETE FROM org_metric_values WHERE org_id = ? AND metric_key = ?`, [
+    await query(`DELETE FROM tb_csd_org_metric_values WHERE org_id = ? AND metric_key = ?`, [
       req.user.orgId,
       metricKey
     ]);

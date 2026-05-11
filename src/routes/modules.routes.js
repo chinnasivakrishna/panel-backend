@@ -9,7 +9,7 @@ router.get("/", async (req, res) => {
   try {
     const modules = await query(
       `SELECT id, code, name, icon, route, ui_config_json, is_active
-       FROM modules
+       FROM tb_project_modules
        WHERE org_id = ? AND is_active = 1
        ORDER BY name ASC`,
       [req.user.orgId]
@@ -24,7 +24,7 @@ router.get("/:id/fields", async (req, res) => {
   try {
     const fields = await query(
       `SELECT id, field_key, label, field_type, is_required, is_listed, sort_order, options_json
-       FROM module_fields
+       FROM tb_project_module_fields
        WHERE org_id = ? AND module_id = ?
        ORDER BY sort_order ASC`,
       [req.user.orgId, req.params.id]
@@ -41,7 +41,7 @@ router.get("/:id/records", async (req, res) => {
     const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(Math.floor(limitRaw), 1), 200) : 50;
     const rows = await query(
       `SELECT id, data_json, created_at, updated_at
-       FROM module_records
+       FROM tb_project_module_records
        WHERE org_id = ? AND module_id = ?
        ORDER BY updated_at DESC
        LIMIT ${limit}`,
@@ -58,7 +58,7 @@ router.post("/:id/records", async (req, res) => {
   if (!data || typeof data !== "object") return res.status(400).json({ message: "data object is required" });
   try {
     await query(
-      `INSERT INTO module_records (org_id, module_id, data_json, created_by)
+      `INSERT INTO tb_project_module_records (org_id, module_id, data_json, created_by)
        VALUES (?, ?, ?, ?)`,
       [req.user.orgId, req.params.id, JSON.stringify(data), req.user.sub]
     );
@@ -73,7 +73,7 @@ router.patch("/:id/records/:recordId", async (req, res) => {
   if (!data || typeof data !== "object") return res.status(400).json({ message: "data object is required" });
   try {
     await query(
-      `UPDATE module_records
+      `UPDATE tb_project_module_records
        SET data_json = ?
        WHERE id = ? AND module_id = ? AND org_id = ?`,
       [JSON.stringify(data), req.params.recordId, req.params.id, req.user.orgId]
@@ -87,7 +87,7 @@ router.patch("/:id/records/:recordId", async (req, res) => {
 router.delete("/:id/records/:recordId", async (req, res) => {
   try {
     await query(
-      `DELETE FROM module_records
+      `DELETE FROM tb_project_module_records
        WHERE id = ? AND module_id = ? AND org_id = ?`,
       [req.params.recordId, req.params.id, req.user.orgId]
     );
