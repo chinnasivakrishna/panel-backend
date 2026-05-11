@@ -23,3 +23,14 @@ export async function query(sql, params = []) {
     if (conn) conn.release();
   }
 }
+
+export async function checkDbConnection() {
+  let conn;
+  try {
+    conn = await pool.getConnection();
+    await conn.query("SELECT 1 AS ok");
+    return true;
+  } finally {
+    if (conn) conn.release();
+  }
+}
