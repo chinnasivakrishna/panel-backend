@@ -91,6 +91,12 @@ async function run() {
       await conn.query("ALTER TABLE tb_project_support_tickets ADD COLUMN decision_status ENUM('pending','accepted','declined') NOT NULL DEFAULT 'pending';");
     } catch {}
     try {
+      await conn.query("ALTER TABLE tb_project_support_tickets ADD COLUMN decision_token VARCHAR(96) NULL;");
+    } catch {}
+    try {
+      await conn.query("ALTER TABLE tb_project_support_tickets ADD COLUMN decision_token_expires_at TIMESTAMP NULL;");
+    } catch {}
+    try {
       await conn.query("ALTER TABLE tb_project_support_tickets ADD COLUMN decision_note TEXT NULL;");
     } catch {}
     try {

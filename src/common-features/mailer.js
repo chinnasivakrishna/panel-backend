@@ -26,7 +26,21 @@ export async function sendMail({ to, subject, text, html }) {
   if (!transporter) return { sent: false, reason: "smtp_not_configured" };
 
   const from = process.env.SMTP_FROM || process.env.SMTP_USER;
-  await transporter.sendMail({ from, to, subject, text, html });
-  return { sent: true };
+  try {
+    const info = await transporter.sendMail({ from, to, subject, text, html });
+    return { sent: true, messageId: info?.messageId || null };
+  } catch (e) {
+    return {
+      sent: false,
+      reason: "smtp_send_failed",
+      error: {
+        message: e?.message || String(e),
+        code: e?.code,
+        response: e?.response,
+        responseCode: e?.responseCode,
+        command: e?.command
+      }
+    };
+  }
 }
 
