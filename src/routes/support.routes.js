@@ -7,7 +7,7 @@ import { authGuard } from "../middleware/auth.js";
 import { adminGuard } from "../middleware/admin.js";
 import { query } from "../config/db.js";
 import { TICKET_STATUS } from "../config/constants.js";
-import { sendMail } from "../lib/mailer.js";
+import { sendMail } from "../common-features/mailer.js";
 
 const router = express.Router();
 router.use(authGuard);
@@ -57,7 +57,7 @@ function parseJson(value, fallback = null) {
 
 async function notifyUploadIssue({ reason, req, ticketType, title }) {
   try {
-    await sendMail({
+    const mail = await sendMail({
       to: SUPPORT_ALERT_EMAIL,
       subject: `[Support Upload Issue] Org ${req.user.orgId} - ${reason}`,
       text: [
@@ -69,9 +69,49 @@ async function notifyUploadIssue({ reason, req, ticketType, title }) {
         `When: ${new Date().toISOString()}`
       ].join("\n")
     });
+    console.log("[support-mail] upload issue alert result:", mail);
   } catch (e) {
     console.warn("Could not send upload issue alert email:", e?.message || e);
   }
+}
+
+async function notifyTicketCreated({ req, ticketType, title, description, attachments }) {
+  const text = [
+    "New support ticket created",
+    `Org ID: ${req.user.orgId}`,
+    `User ID: ${req.user.sub}`,
+    `Type: ${ticketType}`,
+    `Title: ${title}`,
+    `Description: ${description || "-"}`,
+    `Attachments: ${attachments?.length || 0}`,
+    `When: ${new Date().toISOString()}`
+  ].join("\n");
+
+  const result = await sendMail({
+    to: SUPPORT_ALERT_EMAIL,
+    subject: `[Support Ticket] Org ${req.user.orgId} - ${title}`,
+    text
+  });
+  console.log("[support-mail] ticket created mail result:", result);
+  return result;
+}
+
+async function notifyTicketDecision({ req, id, decision, note }) {
+  const result = await sendMail({
+    to: SUPPORT_ALERT_EMAIL,
+    subject: `[Support Decision] Ticket #${id} - ${decision}`,
+    text: [
+      "Support ticket decision updated",
+      `Org ID: ${req.user.orgId}`,
+      `Ticket ID: ${id}`,
+      `Decision: ${decision}`,
+      `Note: ${note || "-"}`,
+      `Decided By User ID: ${req.user.sub}`,
+      `When: ${new Date().toISOString()}`
+    ].join("\n")
+  });
+  console.log("[support-mail] ticket decision mail result:", result);
+  return result;
 }
 
 router.get("/tickets", async (req, res) => {
@@ -133,7 +173,19 @@ router.post("/tickets", (req, res) => {
           TICKET_STATUS.OPEN
         ]
       );
-      return res.status(201).json({ message: "Ticket created", attachments });
+      const mail = await notifyTicketCreated({
+        req,
+        ticketType,
+        title,
+        description,
+        attachments
+      });
+      return res.status(201).json({
+        message: "Ticket created",
+        attachments,
+        mailSent: Boolean(mail?.sent),
+        mailReason: mail?.reason || null
+      });
     } catch (e) {
       await notifyUploadIssue({
         reason: e?.message || "db_insert_failed",
@@ -166,7 +218,13 @@ router.patch("/tickets/:id/decision", adminGuard, async (req, res) => {
       [id, req.user.orgId]
     );
     if (!row) return res.status(404).json({ message: "Ticket not found" });
-    return res.json(row);
+    const mail = await notifyTicketDecision({
+      req,
+      id,
+      decision: String(decision).toLowerCase(),
+      note
+    });
+    return res.json({ ...row, mailSent: Boolean(mail?.sent), mailReason: mail?.reason || null });
   } catch {
     return res.status(500).json({ message: "Unable to update ticket decision" });
   }
