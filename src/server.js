@@ -11,8 +11,8 @@ async function start() {
     process.exit(1);
   }
 
-  app.listen(env.Port, () => {
-    console.log(`Server running on port ${env.Port} (${env.nodeEnv})`);
+  app.listen(env.port, () => {
+    console.log(`Server running on port ${env.port} (${env.nodeEnv})`);
   });
 }
 
