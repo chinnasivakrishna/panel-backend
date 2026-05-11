@@ -14,7 +14,11 @@ export const pool = mariadb.createPool({
       }
     }
     : {}),
-  connectionLimit: 10,
+  // Keep this low on shared MySQL hosts (Hostinger)
+  connectionLimit: Number.isFinite(env.dbPoolLimit) && env.dbPoolLimit > 0 ? env.dbPoolLimit : 1,
+  minimumIdle: 1,
+  idleTimeout: 60_000,
+  acquireTimeout: 10_000,
   connectTimeout: 5000,
   allowPublicKeyRetrieval: true,
   // Ensure BIGINT columns (ids) serialize cleanly to JSON in Express responses.
@@ -22,22 +26,11 @@ export const pool = mariadb.createPool({
 });
 
 export async function query(sql, params = []) {
-  let conn;
-  try {
-    conn = await pool.getConnection();
-    return await conn.query(sql, params);
-  } finally {
-    if (conn) conn.release();
-  }
+  // Use pool.query to encourage connection reuse.
+  return await pool.query(sql, params);
 }
 
 export async function checkDbConnection() {
-  let conn;
-  try {
-    conn = await pool.getConnection();
-    await conn.query("SELECT 1 AS ok");
-    return true;
-  } finally {
-    if (conn) conn.release();
-  }
+  await pool.query("SELECT 1 AS ok");
+  return true;
 }

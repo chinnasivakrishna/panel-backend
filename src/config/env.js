@@ -12,6 +12,7 @@ export const env = {
   dbUser: process.env.DB_USER,
   dbPassword: process.env.DB_PASSWORD,
   dbName: process.env.DB_NAME,
+  dbPoolLimit: Number(process.env.DB_POOL_LIMIT || 1),
   dbSsl: String(process.env.DB_SSL || "false").toLowerCase() === "true",
   dbSslRejectUnauthorized:
     String(process.env.DB_SSL_REJECT_UNAUTHORIZED || "false").toLowerCase() === "true",
