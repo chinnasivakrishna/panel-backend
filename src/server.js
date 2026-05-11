@@ -10,7 +10,6 @@ process.on("uncaughtException", (err) => {
   console.log("[startup] uncaughtException:", err);
   process.exit(1);
 });
-
 function logStartupContext() {
   const dbPortRaw = process.env.DB_PORT;
   const hasDbPassword = Boolean(process.env.DB_PASSWORD && String(process.env.DB_PASSWORD).trim());
